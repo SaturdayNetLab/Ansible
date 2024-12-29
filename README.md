@@ -1,4 +1,4 @@
-What is Ansible?
+# What is Ansible?
 
 Ansible is an open-source automation tool used for configuring, managing, and automating IT infrastructure. It allows you to perform tasks like software installation, server configuration, and cloud infrastructure management in a simple and efficient way. Ansible operates agentless, meaning that no software needs to be installed on the managed hosts—only SSH access is required.
 What are Playbooks used for?
