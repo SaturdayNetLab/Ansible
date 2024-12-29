@@ -1,0 +1,55 @@
+---
+- name: Installiere Docker, Docker Compose und Portainer
+  hosts: all
+  become: yes
+  tasks:
+    # Docker Installation für Debian/Ubuntu
+    - name: Installiere Docker (Debian/Ubuntu)
+      apt:
+        name: 
+          - docker.io
+          - docker-compose
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    # Docker Installation für CentOS/RHEL
+    - name: Installiere Docker (CentOS/RHEL)
+      yum:
+        name:
+          - docker
+          - docker-compose
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    # Starte Docker-Service
+    - name: Starte Docker und setze ihn auf automatisch starten
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    # Installiere Docker Compose (falls nicht in den Repositories)
+    - name: Installiere Docker Compose manuell (falls nicht in Repositories)
+      get_url:
+        url: https://github.com/docker/compose/releases/download/1.29.2/docker-compose-{{ ansible_system }}-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: 'u+x'
+      when: ansible_os_family == "Debian" or ansible_os_family == "RedHat"
+
+    # Erstelle ein Docker-Container für Portainer
+    - name: Starte Portainer Container
+      docker_container:
+        name: portainer
+        image: portainer/portainer-ce
+        state: started
+        restart_policy: always
+        published_ports:
+          - "9000:9000"
+        volumes:
+          - "/var/run/docker.sock:/var/run/docker.sock"
+        networks:
+          - default
+      tags:
+        - portainer
+
