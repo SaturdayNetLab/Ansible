@@ -21,7 +21,7 @@
          - htop
          # - build-essential
          # - curl
-         # - fail2ban
+         - fail2ban
          # - firewalld
          # - git
          # - needrestart
