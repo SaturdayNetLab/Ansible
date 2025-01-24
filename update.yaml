@@ -1,0 +1,24 @@
+---
+- name: Automatisches Update und Neustart bei Bedarf
+  hosts: all
+  become: yes
+  tasks:
+    - name: Aktualisiere Paketliste
+      apt:
+        update_cache: yes
+
+    - name: Installiere Updates
+      apt:
+        upgrade: dist
+        autoremove: yes
+
+    - name: Prüfe, ob ein Neustart erforderlich ist
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Neustart durchführen, wenn erforderlich
+      reboot:
+        msg: "Das System wird aufgrund von Updates neu gestartet."
+        test_command: whoami
+      when: reboot_required.stat.exists == true
