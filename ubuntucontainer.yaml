@@ -1,54 +1,62 @@
 ---
-- name: Create and configure a new Proxmox container using SSH and Semaphore credentials
-  hosts: proxmox
-  gather_facts: no
+- name: Erstelle einen neuen Ubuntu 24.04 Container auf Proxmox
+  hosts: pve
+  gather_facts: false
   vars:
-    container_name: "ubuntu-container"
-    template: "local:vztmpl/ubuntu-24.04-standard_24.04-1_amd64.tar.gz"  # Ubuntu 24.04 Template
-    container_memory: 1024
-    container_cores: 2
-    network_bridge: "vmbr0"
-    proxmox_user: "root"  # SSH Benutzer auf Proxmox
-    proxmox_host: "pve"  # Hostname deines Proxmox-Hosts (pve)
+    proxmox_host: "proxmox.example.com"  # Ersetze mit deinem Proxmox-Host
+    proxmox_user: "root"  # Ersetze mit deinem Benutzer
+    proxmox_password: "dein_passwort"  # Ersetze mit deinem Passwort
+    template_id: 101  # ID des Ubuntu 24.04 Templates (ändern, wenn notwendig)
 
   tasks:
-    - name: Generate a random password
-      ansible.builtin.shell: openssl rand -base64 16
-      register: generated_password
+    - name: Generiere eine zufällige Container-ID
+      set_fact:
+        container_id: "{{ 100 + (ansible_date_time.second | int) }}"  # Beispiel für ID-Generierung
 
-    - name: Fetch the list of existing VMIDs from Proxmox via SSH
-      ansible.builtin.shell: ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pvesh get /cluster/resources --type vm | jq -r '.[].vmid'"
-      register: existing_vmids
-      changed_when: false
+    - name: Generiere zufälligen Container-Namen
+      set_fact:
+        container_name: "ubuntu-container-{{ lookup('password', '/dev/null length=8 chars=letters,digits') }}"
 
-    - name: Find the next available VMID
-      ansible.builtin.set_fact:
-        new_vmid: "{{ (existing_vmids.stdout_lines | map('int') | sort | last | default(99)) + 1 }}"
+    - name: Generiere zufälliges Passwort für den Container
+      set_fact:
+        container_password: "{{ lookup('password', '/dev/null length=16 chars=letters,digits') }}"
 
-    - name: Create a new Proxmox container with DHCP via SSH
-      ansible.builtin.shell: |
-        ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pct create {{ new_vmid }} {{ template }} -hostname {{ container_name }} -memory {{ container_memory }} -cores {{ container_cores }} -net0 name=eth0,bridge={{ network_bridge }},ip=dhcp -rootfs local-lvm:8"
-      register: container_creation_output
+    - name: Überprüfen, ob die Container-ID bereits existiert
+      uri:
+        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_host }}/lxc"
+        method: GET
+        user: "{{ proxmox_user }}"
+        password: "{{ proxmox_password }}"
+        validate_certs: no
+      register: container_list
 
-    - name: Start the container
-      ansible.builtin.shell: |
-        ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pct start {{ new_vmid }}"
-      register: container_start_output
+    - name: Sicherstellen, dass die ID einzigartig ist
+      set_fact:
+        container_id: "{{ container_id + 1 }}"
+      when: container_list.json.data | selectattr('vmid', 'equalto', container_id) | list | length > 0
 
-    - name: Update the container and install required packages via SSH
-      ansible.builtin.shell: |
-        ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pct exec {{ new_vmid }} -- bash -c 'apt-get update && apt-get upgrade -y && apt-get install -y fail2ban sudo curl'"
-      register: container_update_output
+    - name: Container auf Proxmox erstellen
+      uri:
+        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_host }}/lxc"
+        method: POST
+        user: "{{ proxmox_user }}"
+        password: "{{ proxmox_password }}"
+        validate_certs: no
+        body: |
+          {
+            "vmid": "{{ container_id }}",
+            "hostname": "{{ container_name }}",
+            "ostemplate": "local:vztmpl/{{ template_id }}-template.tar.gz",
+            "rootfs": "local-lvm:8",
+            "password": "{{ container_password }}",
+            "cores": 2,
+            "memory": 1024,
+            "swap": 1024,
+            "net0": "name=eth0,bridge=vmbr0,ip=dhcp,tag=10"
+          }
+        body_format: json
+      register: create_container
 
-    - name: Reboot the container if necessary via SSH
-      ansible.builtin.shell: |
-        ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pct exec {{ new_vmid }} -- bash -c 'if [ -f /var/run/reboot-required ]; then shutdown -r now; fi'"
-      register: container_reboot_output
-
-    - name: Display the new container details
-      ansible.builtin.debug:
-        msg: |
-          Container created successfully!
-          Hostname: {{ container_name }}
-          VMID: {{ new_vmid }}
-          Root Password: {{ generated_password.stdout }}
+    - name: Ausgabe des Container-Namens und Passworts
+      debug:
+        msg: "Container erstellt mit ID: {{ container_id }}, Name: {{ container_name }}, Passwort: {{ container_password }}"
