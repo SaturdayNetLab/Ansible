@@ -9,7 +9,7 @@
     container_cores: 2
     network_bridge: "vmbr0"
     proxmox_user: "root"  # SSH Benutzer auf Proxmox
-    proxmox_host: "proxmox-host"  # Der Hostname oder die IP-Adresse deines Proxmox-Hosts
+    proxmox_host: "pve"  # Hostname deines Proxmox-Hosts (pve)
 
   tasks:
     - name: Generate a random password
