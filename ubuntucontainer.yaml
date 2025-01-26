@@ -3,17 +3,18 @@
   hosts: localhost
   gather_facts: true
   vars:
-    proxmox_host: "192.168.1.210"
-    proxmox_user: "root@pam"  # Benutzername für Proxmox API
-    proxmox_password: "your_password"  # Passwort für Proxmox API
+    proxmox_host: "192.168.1.210"  # Ersetze dies mit deinem Proxmox-Hostname oder IP
+    proxmox_user: "root@pam"  # API Benutzername
+    proxmox_password: "your_password"  # API Passwort
+    proxmox_node: "pve"  # Name des Proxmox Nodes, auf dem der Container erstellt werden soll
     storage: "local"  # Speicherort für den Container
     os_template: "local:vztmpl/ubuntu-24.04-standard_amd64.tar.gz"  # Ubuntu 24.04 Template
     password_length: 12  # Länge des zufälligen Passworts
   tasks:
     - name: Generate a random container ID that doesn't exist
       set_fact:
-        container_id: "{{ lookup('pipe', 'pvesh get /nodes/{{ proxmox_node }}/lxc | jq -r \'.[].vmid\'') | map('int') | max + 1 }}"
-    
+        container_id: "{{ lookup('pipe', 'pvesh get /nodes/' + proxmox_node + '/lxc | jq -r \'.[].vmid\'') | map('int') | max + 1 }}"
+
     - name: Generate a random container name
       set_fact:
         container_name: "{{ lookup('password', '/dev/null length=8 chars=ascii_letters') }}"
@@ -22,7 +23,7 @@
       set_fact:
         root_password: "{{ lookup('password', '/dev/null length=12 chars=ascii_letters') }}"
 
-    - name: Create LXC container
+    - name: Create LXC container on Proxmox
       community.proxmox.proxmox_lxc:
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
