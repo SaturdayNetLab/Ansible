@@ -1,6 +1,6 @@
 ---
 - name: Erstelle einen neuen Ubuntu 24.04 Container auf Proxmox
-  hosts: pve
+  hosts: localhost
   gather_facts: true
   vars:
     proxmox_host: "proxmox.example.com"  # Ersetze mit deinem Proxmox-Host
@@ -11,7 +11,7 @@
   tasks:
     - name: Generiere eine zufällige Container-ID
       set_fact:
-        container_id: "{{ 100 + (ansible_date_time.second | int) }}"  # Beispiel für ID-Generierung
+        container_id: "{{ 100 + (ansible_random | int) }}"  # Generiere eine zufällige ID basierend auf ansible_random
 
     - name: Generiere zufälligen Container-Namen
       set_fact:
@@ -30,10 +30,14 @@
         validate_certs: no
       register: container_list
 
+    - name: Ausgabe der Antwort der Proxmox-API
+      debug:
+        msg: "{{ container_list }}"
+
     - name: Sicherstellen, dass die ID einzigartig ist
       set_fact:
         container_id: "{{ container_id + 1 }}"
-      when: container_list.json.data | selectattr('vmid', 'equalto', container_id) | list | length > 0
+      when: container_list.json.data is defined and container_list.json.data | selectattr('vmid', 'equalto', container_id) | list | length > 0
 
     - name: Container auf Proxmox erstellen
       uri:
