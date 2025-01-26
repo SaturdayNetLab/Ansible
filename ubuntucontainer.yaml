@@ -1,5 +1,5 @@
 ---
-- name: Create and configure a new Proxmox container
+- name: Create and configure a new Proxmox container using SSH and Semaphore credentials
   hosts: proxmox
   gather_facts: no
   vars:
@@ -8,13 +8,16 @@
     container_memory: 1024
     container_cores: 2
     network_bridge: "vmbr0"
+    proxmox_user: "root"  # SSH Benutzer auf Proxmox
+    proxmox_host: "proxmox-host"  # Der Hostname oder die IP-Adresse deines Proxmox-Hosts
+
   tasks:
     - name: Generate a random password
       ansible.builtin.shell: openssl rand -base64 16
       register: generated_password
 
-    - name: Fetch the list of existing VMIDs
-      ansible.builtin.shell: "pvesh get /cluster/resources --type vm | jq -r '.[].vmid'"
+    - name: Fetch the list of existing VMIDs from Proxmox via SSH
+      ansible.builtin.shell: ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pvesh get /cluster/resources --type vm | jq -r '.[].vmid'"
       register: existing_vmids
       changed_when: false
 
@@ -22,47 +25,25 @@
       ansible.builtin.set_fact:
         new_vmid: "{{ (existing_vmids.stdout_lines | map('int') | sort | last | default(99)) + 1 }}"
 
-    - name: Create a new Proxmox container with DHCP
-      community.general.proxmox:
-        api_host: "{{ proxmox_api_url }}"
-        api_user: "{{ proxmox_api_user }}"
-        api_password: "{{ proxmox_api_token_secret }}"
-        node: "proxmox-node"  # Dein Proxmox-Knoten
-        vmid: "{{ new_vmid }}"
-        state: present
-        hostname: "{{ container_name }}"
-        ostemplate: "{{ template }}"
-        storage: "local-lvm"
-        password: "{{ generated_password.stdout }}"
-        memory: "{{ container_memory }}"
-        cores: "{{ container_cores }}"
-        netif:
-          - name: eth0
-            bridge: "{{ network_bridge }}"
-            type: dhcp
+    - name: Create a new Proxmox container with DHCP via SSH
+      ansible.builtin.shell: |
+        ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pct create {{ new_vmid }} {{ template }} -hostname {{ container_name }} -memory {{ container_memory }} -cores {{ container_cores }} -net0 name=eth0,bridge={{ network_bridge }},ip=dhcp -rootfs local-lvm:8"
+      register: container_creation_output
 
     - name: Start the container
-      community.general.proxmox:
-        api_host: "{{ proxmox_api_url }}"
-        api_user: "{{ proxmox_api_user }}"
-        api_password: "{{ proxmox_api_token_secret }}"
-        node: "proxmox-node"
-        vmid: "{{ new_vmid }}"
-        state: started
+      ansible.builtin.shell: |
+        ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pct start {{ new_vmid }}"
+      register: container_start_output
 
-    - name: Update the container and install required packages
-      ansible.builtin.command:
-        cmd: |
-          pct exec {{ new_vmid }} -- bash -c "apt-get update && apt-get upgrade -y && apt-get install -y fail2ban sudo curl"
-      args:
-        warn: false
+    - name: Update the container and install required packages via SSH
+      ansible.builtin.shell: |
+        ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pct exec {{ new_vmid }} -- bash -c 'apt-get update && apt-get upgrade -y && apt-get install -y fail2ban sudo curl'"
+      register: container_update_output
 
-    - name: Reboot the container if necessary
-      ansible.builtin.command:
-        cmd: |
-          pct exec {{ new_vmid }} -- bash -c "if [ -f /var/run/reboot-required ]; then shutdown -r now; fi"
-      args:
-        warn: false
+    - name: Reboot the container if necessary via SSH
+      ansible.builtin.shell: |
+        ssh {{ ansible_ssh_user }}@{{ proxmox_host }} "pct exec {{ new_vmid }} -- bash -c 'if [ -f /var/run/reboot-required ]; then shutdown -r now; fi'"
+      register: container_reboot_output
 
     - name: Display the new container details
       ansible.builtin.debug:
