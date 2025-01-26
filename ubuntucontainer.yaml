@@ -11,7 +11,7 @@
   tasks:
     - name: Generiere eine zufällige Container-ID
       set_fact:
-        container_id: "{{ 100 + (random(1, 10000) | int) }}"  # Verwende Jinja2 random()
+        container_id: "{{ 100 + (lookup('random', '1,10000') | int) }}"  # Verwende lookup('random')
 
     - name: Generiere zufälligen Container-Namen
       set_fact:
