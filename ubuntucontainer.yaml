@@ -1,57 +1,51 @@
 ---
-- name: Erstelle einen neuen Ubuntu 24.04 Container auf Proxmox
-  hosts: pve
+- name: Create Ubuntu 24.04 container on Proxmox
+  hosts: localhost
   gather_facts: true
   vars:
-    proxmox_host: "pve"  # Ersetze mit deinem Proxmox-Host
-    proxmox_user: "root"  # Ersetze mit deinem Benutzer
-    proxmox_password: "dein_passwort"  # Ersetze mit deinem Passwort
-    template_id: 101  # ID des Ubuntu 24.04 Templates (ändern, wenn notwendig)
-    min_container_id: 100  # Die minimale Container-ID, die verwendet werden soll
-    max_container_id: 9999  # Die maximale Container-ID, die verwendet werden soll
-
+    proxmox_host: "192.168.1.210"
+    proxmox_user: "root@pam"  # Benutzername für Proxmox API
+    proxmox_password: "your_password"  # Passwort für Proxmox API
+    storage: "local"  # Speicherort für den Container
+    os_template: "local:vztmpl/ubuntu-24.04-standard_amd64.tar.gz"  # Ubuntu 24.04 Template
+    password_length: 12  # Länge des zufälligen Passworts
   tasks:
-    - name: Abfrage der existierenden Container-IDs über SSH
-      ansible.builtin.command:
-        cmd: "pct list | awk '{print $1}'"
-        chdir: "/root"
-      register: container_list
-      become: true
-      delegate_to: "{{ proxmox_host }}"
+    - name: Generate a random container ID that doesn't exist
+      set_fact:
+        container_id: "{{ lookup('pipe', 'pvesh get /nodes/{{ proxmox_node }}/lxc | jq -r \'.[].vmid\'') | map('int') | max + 1 }}"
     
-    - name: Ausgabe der bestehenden Container-IDs
+    - name: Generate a random container name
+      set_fact:
+        container_name: "{{ lookup('password', '/dev/null length=8 chars=ascii_letters') }}"
+
+    - name: Generate a random root password
+      set_fact:
+        root_password: "{{ lookup('password', '/dev/null length=12 chars=ascii_letters') }}"
+
+    - name: Create LXC container
+      community.proxmox.proxmox_lxc:
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        api_host: "{{ proxmox_host }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ container_id }}"
+        hostname: "{{ container_name }}"
+        password: "{{ root_password }}"
+        cores: 2
+        memory: 2048
+        swap: 2048
+        netif:
+          - name: eth0
+            bridge: vmbr0
+            ip: dhcp
+        storage: "{{ storage }}"
+        ostemplate: "{{ os_template }}"
+        force: true
+        state: started
+
+    - name: Show container details
       debug:
-        msg: "{{ container_list.stdout_lines }}"
-
-    - name: Erstellen einer Liste aller existierenden Container-IDs
-      set_fact:
-        existing_ids: "{{ container_list.stdout_lines | map('int') | list }}"
-
-    - name: Finde die nächstfreie Container-ID
-      set_fact:
-        container_id: "{{ (min_container_id..max_container_id) | selectattr('item', 'not in', existing_ids) | first }}"
-
-    - name: Generiere zufälligen Container-Namen
-      set_fact:
-        container_name: "ubuntu-container-{{ lookup('password', '/dev/null length=8 chars=letters,digits') }}"
-
-    - name: Generiere zufälliges Passwort für den Container
-      set_fact:
-        container_password: "{{ lookup('password', '/dev/null length=16 chars=letters,digits') }}"
-
-    - name: Container auf Proxmox erstellen über SSH
-      ansible.builtin.shell: |
-        pct create {{ container_id }} /var/lib/vz/template/cache/ubuntu-24.04-standard_24.04-1_amd64.tar.gz \
-        -hostname {{ container_name }} \
-        -rootfs local-lvm:8 \
-        -memory 1024 \
-        -cores 2 \
-        -swap 1024 \
-        -net0 name=eth0,bridge=vmbr0,ip=dhcp,tag=10 \
-        -password {{ container_password }}
-      become: true
-      delegate_to: "{{ proxmox_host }}"
-
-    - name: Ausgabe des Container-Namens und Passworts
-      debug:
-        msg: "Container erstellt mit ID: {{ container_id }}, Name: {{ container_name }}, Passwort: {{ container_password }}"
+        msg:
+          - "Container ID: {{ container_id }}"
+          - "Container Name: {{ container_name }}"
+          - "Container Password: {{ root_password }}"
