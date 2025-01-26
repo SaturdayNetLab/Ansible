@@ -1,7 +1,7 @@
 ---
 - name: Erstelle einen neuen Ubuntu 24.04 Container auf Proxmox
-  hosts: localhost
-  gather_facts: true  # Fakten sammeln
+  hosts: pve
+  gather_facts: true
   vars:
     proxmox_host: "proxmox.example.com"  # Ersetze mit deinem Proxmox-Host
     proxmox_user: "root"  # Ersetze mit deinem Benutzer
@@ -11,22 +11,21 @@
     max_container_id: 9999  # Die maximale Container-ID, die verwendet werden soll
 
   tasks:
-    - name: Überprüfen, welche Container-IDs bereits existieren
-      uri:
-        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_host }}/lxc"
-        method: GET
-        user: "{{ proxmox_user }}"
-        password: "{{ proxmox_password }}"
-        validate_certs: no
+    - name: Abfrage der existierenden Container-IDs über SSH
+      ansible.builtin.command:
+        cmd: "pct list | awk '{print $1}'"
+        chdir: "/root"
       register: container_list
-
-    - name: Ausgabe der Antwort der Proxmox-API
+      become: true
+      delegate_to: "{{ proxmox_host }}"
+    
+    - name: Ausgabe der bestehenden Container-IDs
       debug:
-        msg: "{{ container_list }}"
+        msg: "{{ container_list.stdout_lines }}"
 
     - name: Erstellen einer Liste aller existierenden Container-IDs
       set_fact:
-        existing_ids: "{{ container_list.json.data | map(attribute='vmid') | list }}"
+        existing_ids: "{{ container_list.stdout_lines | map('int') | list }}"
 
     - name: Finde die nächstfreie Container-ID
       set_fact:
@@ -40,27 +39,18 @@
       set_fact:
         container_password: "{{ lookup('password', '/dev/null length=16 chars=letters,digits') }}"
 
-    - name: Container auf Proxmox erstellen
-      uri:
-        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_host }}/lxc"
-        method: POST
-        user: "{{ proxmox_user }}"
-        password: "{{ proxmox_password }}"
-        validate_certs: no
-        body: |
-          {
-            "vmid": "{{ container_id }}",
-            "hostname": "{{ container_name }}",
-            "ostemplate": "local:vztmpl/{{ template_id }}-template.tar.gz",
-            "rootfs": "local-lvm:8",
-            "password": "{{ container_password }}",
-            "cores": 2,
-            "memory": 1024,
-            "swap": 1024,
-            "net0": "name=eth0,bridge=vmbr0,ip=dhcp,tag=10"
-          }
-        body_format: json
-      register: create_container
+    - name: Container auf Proxmox erstellen über SSH
+      ansible.builtin.shell: |
+        pct create {{ container_id }} /var/lib/vz/template/cache/ubuntu-24.04-standard_24.04-1_amd64.tar.gz \
+        -hostname {{ container_name }} \
+        -rootfs local-lvm:8 \
+        -memory 1024 \
+        -cores 2 \
+        -swap 1024 \
+        -net0 name=eth0,bridge=vmbr0,ip=dhcp,tag=10 \
+        -password {{ container_password }}
+      become: true
+      delegate_to: "{{ proxmox_host }}"
 
     - name: Ausgabe des Container-Namens und Passworts
       debug:
