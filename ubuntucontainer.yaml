@@ -1,7 +1,7 @@
 ---
 - name: Erstelle einen neuen Ubuntu 24.04 Container auf Proxmox
   hosts: pve
-  gather_facts: false
+  gather_facts: true
   vars:
     proxmox_host: "proxmox.example.com"  # Ersetze mit deinem Proxmox-Host
     proxmox_user: "root"  # Ersetze mit deinem Benutzer
