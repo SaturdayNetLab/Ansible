@@ -3,7 +3,7 @@
   hosts: pve
   gather_facts: true
   vars:
-    proxmox_host: "proxmox.example.com"  # Ersetze mit deinem Proxmox-Host
+    proxmox_host: "pve"  # Ersetze mit deinem Proxmox-Host
     proxmox_user: "root"  # Ersetze mit deinem Benutzer
     proxmox_password: "dein_passwort"  # Ersetze mit deinem Passwort
     template_id: 101  # ID des Ubuntu 24.04 Templates (ändern, wenn notwendig)
