@@ -1,7 +1,7 @@
 ---
 - name: Erstelle einen neuen Ubuntu 24.04 Container auf Proxmox
   hosts: localhost
-  gather_facts: true
+  gather_facts: true  # Fakten sammeln
   vars:
     proxmox_host: "proxmox.example.com"  # Ersetze mit deinem Proxmox-Host
     proxmox_user: "root"  # Ersetze mit deinem Benutzer
@@ -11,7 +11,7 @@
   tasks:
     - name: Generiere eine zufällige Container-ID
       set_fact:
-        container_id: "{{ 100 + (ansible_random | int) }}"  # Generiere eine zufällige ID basierend auf ansible_random
+        container_id: "{{ 100 + (random(1, 10000) | int) }}"  # Verwende Jinja2 random()
 
     - name: Generiere zufälligen Container-Namen
       set_fact:
