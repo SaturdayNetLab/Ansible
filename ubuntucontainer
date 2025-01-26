@@ -1,0 +1,73 @@
+---
+- name: Create and configure a new Proxmox container
+  hosts: proxmox
+  gather_facts: no
+  vars:
+    container_name: "ubuntu-container"
+    template: "local:vztmpl/ubuntu-24.04-standard_24.04-1_amd64.tar.gz"  # Ubuntu 24.04 Template
+    container_memory: 1024
+    container_cores: 2
+    network_bridge: "vmbr0"
+  tasks:
+    - name: Generate a random password
+      ansible.builtin.shell: openssl rand -base64 16
+      register: generated_password
+
+    - name: Fetch the list of existing VMIDs
+      ansible.builtin.shell: "pvesh get /cluster/resources --type vm | jq -r '.[].vmid'"
+      register: existing_vmids
+      changed_when: false
+
+    - name: Find the next available VMID
+      ansible.builtin.set_fact:
+        new_vmid: "{{ (existing_vmids.stdout_lines | map('int') | sort | last | default(99)) + 1 }}"
+
+    - name: Create a new Proxmox container with DHCP
+      community.general.proxmox:
+        api_host: "{{ proxmox_api_url }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_token_secret }}"
+        node: "proxmox-node"  # Dein Proxmox-Knoten
+        vmid: "{{ new_vmid }}"
+        state: present
+        hostname: "{{ container_name }}"
+        ostemplate: "{{ template }}"
+        storage: "local-lvm"
+        password: "{{ generated_password.stdout }}"
+        memory: "{{ container_memory }}"
+        cores: "{{ container_cores }}"
+        netif:
+          - name: eth0
+            bridge: "{{ network_bridge }}"
+            type: dhcp
+
+    - name: Start the container
+      community.general.proxmox:
+        api_host: "{{ proxmox_api_url }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_token_secret }}"
+        node: "proxmox-node"
+        vmid: "{{ new_vmid }}"
+        state: started
+
+    - name: Update the container and install required packages
+      ansible.builtin.command:
+        cmd: |
+          pct exec {{ new_vmid }} -- bash -c "apt-get update && apt-get upgrade -y && apt-get install -y fail2ban sudo curl"
+      args:
+        warn: false
+
+    - name: Reboot the container if necessary
+      ansible.builtin.command:
+        cmd: |
+          pct exec {{ new_vmid }} -- bash -c "if [ -f /var/run/reboot-required ]; then shutdown -r now; fi"
+      args:
+        warn: false
+
+    - name: Display the new container details
+      ansible.builtin.debug:
+        msg: |
+          Container created successfully!
+          Hostname: {{ container_name }}
+          VMID: {{ new_vmid }}
+          Root Password: {{ generated_password.stdout }}
