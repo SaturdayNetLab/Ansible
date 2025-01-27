@@ -1,0 +1,17 @@
+---
+- name: Windows Server aktualisieren und bei Bedarf neu starten
+  hosts: windows_server
+  tasks:
+    - name: Installiere verfügbare Windows Updates
+      win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+        reboot: yes
+
+    - name: Überprüfe, ob ein Neustart erforderlich ist
+      win_reboot:
+        msg: "Der Server wird neu gestartet, um Updates abzuschließen."
+        pre_reboot_delay: 5
+        post_reboot_delay: 30
+        reboot_timeout: 3600
